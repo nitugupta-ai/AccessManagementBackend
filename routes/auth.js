@@ -1,22 +1,24 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const db = require("../config/db"); // MySQL2 with pool.promise()
-require("dotenv").config();
+const {db} = require("../config/db"); // MySQL2 with pool.promise()
+const authMiddleware = require("../middleware/auth");
+const roleMiddleware = require("../middleware/role");
+require("dotenv").config({ path: "../.env" });
 
 const router = express.Router();
 const secretKey = process.env.JWT_SECRET; // Ensure this is set in .env
 
-// ✅ Register Route
+//  Register Route
 router.post("/register", async (req, res) => {
     const { name, email, password } = req.body;
-    console.log("🔹 Register request received:", req.body);
+    console.log(" Register request received:", req.body);
 
     try {
         // Check if email already exists
         const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
         if (existingUsers.length > 0) {
-            console.log("⚠️ Email already exists");
+            console.log(" Email already exists");
             return res.status(400).json({ message: "Email already exists" });
         }
 
@@ -36,15 +38,15 @@ router.post("/register", async (req, res) => {
             [name, email, hashedPassword, isAdmin]
         );
 
-        console.log("✅ User registered successfully");
+        console.log(" User registered successfully");
         return res.status(201).json({ message: "User registered successfully", role: isAdmin });
     } catch (error) {
-        console.error("❌ Registration error:", error);
+        console.error(" Registration error:", error);
         return res.status(500).json({ error: error.message });
     }
 });
 
-// ✅ Login Route
+// Login Route
 router.post("/login", async (req, res) => {
     const { email, password } = req.body;
     console.log("🔹 Login request received:", req.body);
@@ -53,7 +55,7 @@ router.post("/login", async (req, res) => {
         // Check if the user exists
         const [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
         if (users.length === 0) {
-            console.log("⚠️ Invalid email");
+            console.log("Invalid email");
             return res.status(400).json({ message: "Invalid credentials" });
         }
 
@@ -62,46 +64,27 @@ router.post("/login", async (req, res) => {
         // Compare password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            console.log("⚠️ Invalid password");
+            console.log("Invalid password");
             return res.status(400).json({ message: "Invalid credentials" });
         }
 
         // Generate JWT Token
         const token = jwt.sign({ id: user.id, role: user.role }, secretKey, { expiresIn: "1h" });
 
-        console.log("✅ Login successful");
+        console.log("Login successful");
         return res.json({
             token,
             user: { id: user.id, name: user.name, email: user.email, role: user.role },
         });
     } catch (error) {
-        console.error("❌ Login error:", error);
+        console.error("Login error:", error);
         return res.status(500).json({ error: error.message });
     }
 });
 
-// ✅ Middleware to Verify Token
-const authMiddleware = (req, res, next) => {
-    console.log("🔹 Auth Middleware: Checking token...");
 
-    const token = req.headers.authorization?.split(" ")[1]; // Handle missing token gracefully
-    if (!token) {
-        console.log("⚠️ No token provided");
-        return res.status(401).json({ message: "Unauthorized" });
-    }
 
-    try {
-        const decoded = jwt.verify(token, secretKey);
-        req.user = decoded;
-        console.log("✅ Token verified:", decoded);
-        next();
-    } catch (error) {
-        console.log("❌ Invalid token");
-        return res.status(401).json({ message: "Invalid token" });
-    }
-};
-
-// ✅ Get Current User (Protected Route)
+// Get Current User (Protected Route)
 router.get("/me", authMiddleware, async (req, res) => {
     try {
         const [user] = await db.query("SELECT id, name, email, role FROM users WHERE id = ?", [req.user.id]);
@@ -112,10 +95,10 @@ router.get("/me", authMiddleware, async (req, res) => {
 
         return res.json(user[0]);
     } catch (error) {
-        console.error("❌ Error fetching user:", error);
+        console.error("Error fetching user:", error);
         return res.status(500).json({ error: "Server error" });
     }
 });
 
-// ✅ Export router
+// Export router
 module.exports = router;

@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../config/db");
+const {db} = require("../config/db");
 const bcrypt = require("bcryptjs");
 const authMiddleware = require("../middleware/auth");
 const roleMiddleware = require("../middleware/role");
@@ -30,9 +30,9 @@ router.delete("/:id", authMiddleware, async (req, res) => {
 
         const userRole = users[0].role;
 
-        // Prevent admin deletion
+        // 🚀 Prevent admin deletion without a 403 response
         if (userRole === "admin") {
-            return res.status(403).json({ message: "Cannot delete an admin!" });
+            return res.status(200).json({ error: true, message: "You cannot delete an admin!" });
         }
 
         // Delete user
@@ -43,6 +43,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
         res.status(500).json({ error: "Error deleting user", details: error.message });
     }
 });
+
 
 // ✅ Create User (Only Admin Can Create Users)
 router.post("/create", authMiddleware, async (req, res) => {

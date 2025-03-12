@@ -1,18 +1,28 @@
 const mysql = require("mysql2/promise");
 require("dotenv").config();
 
-const createConnection = async () => {
-    return await mysql.createConnection({
+// Create a Connection Pool
+const db = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: "access_management",
+    port: process.env.DB_PORT || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+});
+
+// Setup Database & Tables
+const setupDatabase = async () => {
+    const connection = await mysql.createConnection({
         host: process.env.DB_HOST,
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
         port: process.env.DB_PORT || 3306,
         multipleStatements: true,
     });
-};
 
-const setupDatabase = async () => {
-    const connection = await createConnection();
     console.log("Creating Database...");
     await connection.query(`CREATE DATABASE IF NOT EXISTS access_management;`);
     await connection.changeUser({ database: "access_management" });
@@ -60,30 +70,31 @@ const setupDatabase = async () => {
     `);
 
     console.log("Database & Tables Created Successfully!");
-    return connection;
+    await connection.end();
 };
 
-const insertInitialData = async (connection) => {
+// Insert Initial Data
+const insertInitialData = async () => {
     console.log("Inserting Initial Data...");
-    await connection.query(`
+    await db.query(`
         INSERT INTO users (name, email, password, role) 
-        VALUES ('Admin User', 'admin@example.com', '$2a$10$X9gLZ1ph0/UeO2l7FjWse.pH92r8yE7I5Of4BdFUX5cJ6mtgh/Su.', 'admin')
+        VALUES ('Admin User', 'admin@example.com', '$2b$10$I9t2RPmD94ojbSLg4qcsqeQcObz.3oqLEK.MKKiex1qfsyVY9L3Rm', 'admin')
         ON DUPLICATE KEY UPDATE email = email;
     `);
 
-    await connection.query(`
+    await db.query(`
         INSERT INTO roles (name, created_by) 
         VALUES ('Administrator', 1), ('Manager', 1), ('Editor', 1), ('Viewer', 1)
         ON DUPLICATE KEY UPDATE name = name;
     `);
 
-    await connection.query(`
+    await db.query(`
         INSERT INTO modules (name, description) 
         VALUES ('Users', 'Manage Users'), ('Roles', 'Manage Roles'), ('Modules', 'Manage Modules')
         ON DUPLICATE KEY UPDATE name = name;
     `);
 
-    await connection.query(`
+    await db.query(`
         INSERT INTO role_modules (role_id, module_id, permission)
         VALUES 
             (1, 1, 'write'), (1, 2, 'write'), (1, 3, 'write'),
@@ -94,18 +105,5 @@ const insertInitialData = async (connection) => {
     console.log("Initial Data Inserted!");
 };
 
-// Only run setup if executed directly (prevents stopping API)
-if (require.main === module) {
-    (async () => {
-        try {
-            const connection = await setupDatabase();
-            await insertInitialData(connection);
-            await connection.end();
-            console.log("Database Setup Completed Successfully!");
-        } catch (error) {
-            console.error("Error Setting Up Database:", error);
-        }
-    })();
-}
-
-module.exports = { setupDatabase, insertInitialData };
+// Export Database Connection & Setup Functions
+module.exports = { db, setupDatabase, insertInitialData };
