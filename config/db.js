@@ -94,13 +94,7 @@ const insertInitialData = async () => {
         ON DUPLICATE KEY UPDATE name = name;
     `);
 
-    await db.query(`
-        INSERT INTO role_modules (role_id, module_id, permission)
-        VALUES 
-            (1, 1, 'write'), (1, 2, 'write'), (1, 3, 'write'),
-            (2, 2, 'read'), (3, 3, 'read')
-        ON DUPLICATE KEY UPDATE role_id = role_id;
-    `);
+        
 
     console.log("Initial Data Inserted!");
 };

@@ -9,6 +9,7 @@ const roleRoutes = require("./routes/role");
 const moduleRoutes = require("./routes/module");
 const roleModuleRoutes = require("./routes/roleModule");
 const userRoleRoutes = require("./routes/userRole");
+const userModuleRoutes = require("./routes/userModule.js");
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/modules", moduleRoutes);
 app.use("/api/role-modules", roleModuleRoutes);
 app.use("/api/user-roles", userRoleRoutes);
+app.use("/api/user-modules", userModuleRoutes);
 
 // Function to Initialize Database
 const initializeDatabase = async () => {

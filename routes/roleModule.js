@@ -4,34 +4,50 @@ const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
-router.post("/assign", authMiddleware, (req, res) => {
-    console.log("Received request body:", req.body); 
+router.post("/assign", authMiddleware, async (req, res) => {
+    console.log("Received request body:", req.body);
 
     let { role_id, module_ids, permission } = req.body;
 
+    // ✅ Validate role_id and module_ids
     if (!role_id || !module_ids || !Array.isArray(module_ids) || module_ids.length === 0) {
-        console.error("Invalid input:", req.body);
-        return res.status(400).json({ message: "Invalid input" });
+        console.error("Invalid input: role_id or module_ids missing", req.body);
+        return res.status(400).json({ message: "Invalid input: role_id or module_ids missing" });
     }
 
-    // Convert role_id and module_ids to numbers
+    // ✅ Convert to numbers and ensure validity
     role_id = Number(role_id);
-    module_ids = module_ids.map(id => Number(id));
+    module_ids = module_ids.map(id => Number(id)).filter(id => !isNaN(id)); 
 
-    const values = module_ids.map(module_id => [role_id, module_id, permission]);
+    if (isNaN(role_id) || module_ids.length === 0) {
+        console.error("Invalid input after conversion:", { role_id, module_ids });
+        return res.status(400).json({ message: "Invalid role_id or module_ids" });
+    }
 
-    db.query(
-        "INSERT INTO role_modules (role_id, module_id, permission) VALUES ? ON DUPLICATE KEY UPDATE permission=VALUES(permission)",
-        [values],
-        (err, results) => {
-            if (err) {
-                console.error("Database error:", err.message);
-                return res.status(500).json({ error: err.message });
-            }
+    try {
+        const [existingModules] = await db.query(`SELECT id FROM modules WHERE id IN (?)`, [module_ids]);
+        const existingModuleIds = existingModules.map(module => module.id);
+        const validModuleIds = module_ids.filter(id => existingModuleIds.includes(id));
 
-            res.json({ message: "Modules assigned successfully", affectedRows: results.affectedRows });
+        if (validModuleIds.length === 0) {
+            return res.status(400).json({ message: "Invalid module IDs. Modules not found in the database." });
         }
-    );
+
+        const values = validModuleIds.map(module_id => [role_id, module_id, permission]);
+
+        await db.query(
+            `INSERT INTO role_modules (role_id, module_id, permission) 
+             VALUES ? 
+             ON DUPLICATE KEY UPDATE 
+             permission = VALUES(permission)`,
+            [values]
+        );
+
+        res.json({ message: "Modules assigned successfully", affectedRows: values.length });
+    } catch (error) {
+        console.error("Database error:", error.message);
+        return res.status(500).json({ error: error.message });
+    }
 });
 
 

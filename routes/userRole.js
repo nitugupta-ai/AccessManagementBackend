@@ -1,46 +1,58 @@
 const express = require("express");
 const router = express.Router();
-const {db} = require("../config/db.js");
+const { db } = require("../config/db.js");
 const authMiddleware = require("../middleware/auth.js");
 
-// ✅ Admin can assign roles to users
-router.post("/", authMiddleware, async (req, res) => {
+// ✅ Assign a role to a user
+router.post("/", async (req, res) => {
     try {
-        const { user_id, role_id } = req.body;
-        const userRole = req.user.role; // Role from token
+        console.log("Received Request Body:", req.body);
 
-        if (userRole !== "admin") {
-            return res.status(403).json({ message: "Forbidden: Only admin can assign roles to users" });
+        const { user_id, role_id } = req.body;
+
+        if (!user_id || !role_id) {
+            return res.status(400).json({ message: "User ID and Role ID are required" });
         }
 
-        await db.execute(
-            "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE role_id = role_id",
-            [user_id, role_id]
-        );
+        const query = `
+            INSERT INTO user_roles (user_id, role_id) 
+            VALUES (?, ?) 
+            ON DUPLICATE KEY UPDATE role_id = VALUES(role_id)
+        `;
+        const [result] = await db.execute(query, [user_id, role_id]);
 
-        res.status(201).json({ message: "Role assigned to user successfully" });
+        console.log("Database Insert Result:", result);
+        res.json({ message: "Role assigned successfully" });
+
     } catch (error) {
-        console.error("Error assigning role:", error);
-        res.status(500).json({ message: "Error assigning role", error });
+        console.error("Database Error:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 });
 
-// ✅ Admin can remove roles from users
+// ✅ Remove a role from a user (Admin only)
 router.delete("/", authMiddleware, async (req, res) => {
     try {
         const { user_id, role_id } = req.body;
-        const userRole = req.user.role; // Role from token
+        const userRole = req.user.role;
 
         if (userRole !== "admin") {
-            return res.status(403).json({ message: "Forbidden: Only admin can remove roles from users" });
+            return res.status(403).json({ message: "Forbidden: Only admin can remove roles" });
         }
 
-        await db.execute("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?", [user_id, role_id]);
+        const [result] = await db.execute(
+            "DELETE FROM user_roles WHERE user_id = ? AND role_id = ?",
+            [user_id, role_id]
+        );
 
-        res.json({ message: "Role removed from user successfully" });
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Role not found or already removed" });
+        }
+
+        res.json({ message: "Role removed successfully" });
     } catch (error) {
         console.error("Error removing role:", error);
-        res.status(500).json({ message: "Error removing role", error });
+        res.status(500).json({ message: "Error removing role", error: error.message });
     }
 });
 
@@ -49,17 +61,18 @@ router.get("/:userId", authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const [roles] = await db.execute(`
-            SELECT r.id, r.name 
+        const [roles] = await db.execute(
+            `SELECT r.id, r.name 
             FROM roles r
             INNER JOIN user_roles ur ON r.id = ur.role_id
-            WHERE ur.user_id = ?
-        `, [userId]);
+            WHERE ur.user_id = ?`,
+            [userId]
+        );
 
         res.json(roles);
     } catch (error) {
         console.error("Error fetching user roles:", error);
-        res.status(500).json({ message: "Error fetching user roles", error });
+        res.status(500).json({ message: "Error fetching user roles", error: error.message });
     }
 });
 
@@ -70,14 +83,20 @@ router.post("/join", authMiddleware, async (req, res) => {
 
     try {
         // Check if user is already in the role
-        const [existing] = await db.execute("SELECT * FROM user_roles WHERE user_id = ? AND role_id = ?", [userId, role_id]);
+        const [existing] = await db.execute(
+            "SELECT * FROM user_roles WHERE user_id = ? AND role_id = ?",
+            [userId, role_id]
+        );
 
         if (existing.length > 0) {
             return res.status(400).json({ message: "You are already in this role" });
         }
 
         // Add user to role
-        await db.execute("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", [userId, role_id]);
+        await db.execute(
+            "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+            [userId, role_id]
+        );
 
         res.json({ message: "Added to role successfully" });
     } catch (error) {
@@ -92,8 +111,14 @@ router.post("/leave", authMiddleware, async (req, res) => {
     const userId = req.user.id; // User ID from token
 
     try {
-        // Remove user from role
-        await db.execute("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?", [userId, role_id]);
+        const [result] = await db.execute(
+            "DELETE FROM user_roles WHERE user_id = ? AND role_id = ?",
+            [userId, role_id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "You are not in this role" });
+        }
 
         res.json({ message: "Removed from role successfully" });
     } catch (error) {
